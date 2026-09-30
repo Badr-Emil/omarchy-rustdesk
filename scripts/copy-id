@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Copies the RustDesk ID to the clipboard and confirms with a notification
+
+set -uo pipefail
+
+id="$(timeout 3 rustdesk --get-id 2>/dev/null | tr -d '[:space:]')"
+if [[ -z $id ]]; then
+  id="$("$(dirname "$0")/rustdesk-status" | jq -r '.id')"
+fi
+
+if [[ -n $id ]]; then
+  printf '%s' "$id" | wl-copy
+  notify-send -a RustDesk "RustDesk ID copied" "$id"
+else
+  notify-send -a RustDesk -u critical "RustDesk" "Could not read your RustDesk ID"
+fi

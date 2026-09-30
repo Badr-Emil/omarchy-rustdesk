@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Prints recent RustDesk peers as a JSON array, newest first:
+# [{id, alias, hostname, username, platform}]
+
+set -uo pipefail
+
+dir="$HOME/.config/rustdesk/peers"
+[[ -d $dir ]] || { echo '[]'; exit 0; }
+
+value() {
+  sed -n "s/^$1 *= *['\"]\(.*\)['\"] *$/\1/p" "$2" | head -1
+}
+
+ls -t "$dir"/*.toml 2>/dev/null | head -30 | while read -r file; do
+  id="$(basename "$file" .toml)"
+  jq -nc \
+    --arg id "$id" \
+    --arg alias "$(value alias "$file")" \
+    --arg hostname "$(value hostname "$file")" \
+    --arg username "$(value username "$file")" \
+    --arg platform "$(value platform "$file")" \
+    '{id: $id, alias: $alias, hostname: $hostname, username: $username, platform: $platform}'
+done | jq -sc '.'

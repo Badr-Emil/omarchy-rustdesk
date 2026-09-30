@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Prints RustDesk state as JSON: {state, id, service, message}
+# state: missing | stopped | idle | connected
+
+set -uo pipefail
+
+emit() {
+  jq -nc --arg state "$1" --arg id "$2" --arg service "$3" --arg message "$4" \
+    '{state: $state, id: $id, service: $service, message: $message}'
+}
+
+if ! command -v rustdesk >/dev/null 2>&1; then
+  emit "missing" "" "" "RustDesk is not installed (middle-click to install)"
+  exit 0
+fi
+
+service="$(systemctl is-active rustdesk 2>/dev/null || true)"
+[[ -z $service ]] && service="unknown"
+
+id="$(timeout 3 rustdesk --get-id 2>/dev/null | tr -d '[:space:]')"
+if [[ -z $id ]]; then
+  for config in "$HOME/.config/rustdesk/RustDesk.toml" /root/.config/rustdesk/RustDesk.toml; do
+    [[ -r $config ]] || continue
+    id="$(sed -n "s/^id *= *['\"]\([^'\"]*\)['\"].*/\1/p" "$config" | head -1)"
+    [[ -n $id ]] && break
+  done
+fi
+
+# RustDesk spawns a connection-manager process while a peer is connected
+if pgrep -f 'rustdesk --cm' >/dev/null 2>&1; then
+  emit "connected" "$id" "$service" "Remote session active"
+elif pgrep -x rustdesk >/dev/null 2>&1 || [[ $service == active ]]; then
+  emit "idle" "$id" "$service" "RustDesk ready"
+else
+  emit "stopped" "$id" "$service" "RustDesk is not running"
+fi
