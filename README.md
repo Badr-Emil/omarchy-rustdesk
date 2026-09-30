@@ -1,5 +1,7 @@
 # RustDesk for Omarchy
 
+![RustDesk panel](preview.png)
+
 Bar widget that shows your [RustDesk](https://rustdesk.com) status and ID.
 
 Click the icon to open the panel:
