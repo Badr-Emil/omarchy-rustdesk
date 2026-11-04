@@ -9,6 +9,51 @@ emit() {
     '{state: $state, id: $id, service: $service, message: $message}'
 }
 
+# True when an incoming remote session is actually active.
+# RustDesk spawns `rustdesk --cm` for the connection-manager UI, but on Linux
+# 1.5.x that process can linger after the peer disconnects (upstream #15698 /
+# #16860). Require confirming session traffic before reporting "connected".
+incoming_session_active() {
+  local has_cm=0 pid
+  local -a args
+
+  for pid in /proc/[0-9]*; do
+    [[ -r $pid/cmdline ]] || continue
+    mapfile -d '' -t args < "$pid/cmdline" || continue
+    ((${#args[@]} > 0)) || continue
+    [[ ${args[0]##*/} == rustdesk ]] || continue
+    case ${args[1]-} in
+      --cm|--cm-no-ui) has_cm=1; break ;;
+    esac
+  done
+  [[ $has_cm -eq 1 ]] || return 1
+
+  command -v ss >/dev/null 2>&1 || return 0
+
+  # Confirm peer/media traffic. Idle RustDesk typically only keeps UDP to the
+  # rendezvous port; a live session uses relay (21117), direct-access (21118),
+  # or another non-signaling ESTABLISHED TCP owned by rustdesk.
+  ss -tpnH state established 2>/dev/null | awk '
+    {
+      remote = $4
+      local  = $3
+      remote_port = ""
+      local_port = ""
+      if (match(remote, /:([0-9]+)$/, m)) remote_port = m[1]
+      if (match(local,  /:([0-9]+)$/, m)) local_port = m[1]
+      if (remote_port == "") next
+
+      if (remote_port == "21117" || local_port == "21118") exit 0
+      if (index($0, "rustdesk") \
+          && remote_port != "21114" \
+          && remote_port != "21115" \
+          && remote_port != "21116")
+        exit 0
+    }
+    END { exit 1 }
+  '
+}
+
 if ! command -v rustdesk >/dev/null 2>&1; then
   emit "missing" "" "" "RustDesk is not installed (middle-click to install)"
   exit 0
@@ -26,8 +71,7 @@ if [[ -z $id ]]; then
   done
 fi
 
-# RustDesk spawns a connection-manager process while a peer is connected
-if pgrep -f 'rustdesk --cm' >/dev/null 2>&1; then
+if incoming_session_active; then
   emit "connected" "$id" "$service" "Remote session active"
 elif pgrep -x rustdesk >/dev/null 2>&1 || [[ $service == active ]]; then
   emit "idle" "$id" "$service" "RustDesk ready"
