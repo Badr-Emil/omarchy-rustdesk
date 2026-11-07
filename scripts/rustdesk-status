@@ -27,7 +27,9 @@ if [[ -z $id ]]; then
 fi
 
 # RustDesk spawns a connection-manager process while a peer is connected
-if pgrep -f 'rustdesk --cm' >/dev/null 2>&1; then
+# Anchor to the binary: the bar runs this once per monitor at the same time, and an
+# unanchored pattern matches the other instance's own pgrep (false "connected").
+if pgrep -f '^(/usr/bin/|/usr/share/rustdesk/)?rustdesk --cm' >/dev/null 2>&1; then
   emit "connected" "$id" "$service" "Remote session active"
 elif pgrep -x rustdesk >/dev/null 2>&1 || [[ $service == active ]]; then
   emit "idle" "$id" "$service" "RustDesk ready"
